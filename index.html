@@ -622,7 +622,7 @@
         '</div>';
       li.querySelector(".result-title").textContent = track.name;
       li.querySelector(".result-artist").textContent = (track.artists || []).map(a => a.name).join(", ");
-      li.addEventListener("click", () => playTrack(track.uri));
+      li.addEventListener("click", () => playTrack(track));
       li.addEventListener("mouseenter", () => setSelected(i));
       el.results.appendChild(li);
     });
@@ -648,7 +648,7 @@
       e.preventDefault();
       if (currentResults.length === 0) return;
       const idx = selectedIndex >= 0 ? selectedIndex : 0; // ohne Auswahl: relevantestes Ergebnis
-      playTrack(currentResults[idx].uri);
+      playTrack(currentResults[idx]);
     } else if (e.key === "Escape"){
       el.input.value = "";
       renderResults([]);
@@ -658,23 +658,31 @@
   // ============================================================
   // Wiedergabe
   // ============================================================
-  async function playTrack(uri){
+  async function playTrack(track){
     const deviceId = settings.pinnedDevice || null;
     const url = "https://api.spotify.com/v1/me/player/play" + (deviceId ? "?device_id=" + deviceId : "");
+    
+    const body = (track.album && track.album.uri) ? {
+      context_uri: track.album.uri,
+      offset: { uri: track.uri }
+    } : {
+      uris: [track.uri]
+    };
+
     const res = await spotifyFetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uris: [uri] })
+      body: JSON.stringify(body)
     });
 
     if (res.status === 404 || res.status === 403){
-      // Kein aktives Gerät -> minimale Geräteauswahl anzeigen
-      await showDevicePicker(uri);
+      await showDevicePicker(track);
       return;
     }
 
     resetSearch();
     pollNowPlaying(true);
+  }
   }
 
   function resetSearch(){
@@ -683,7 +691,7 @@
     el.input.focus();
   }
 
-  async function showDevicePicker(uriToPlay){
+  async function showDevicePicker(trackToPlay){
     const res = await spotifyFetch("https://api.spotify.com/v1/me/player/devices");
     if (!res.ok) return;
     const data = await res.json();
@@ -693,10 +701,17 @@
       row.className = "device-option";
       row.textContent = dev.name;
       row.addEventListener("click", async () => {
+        const body = (trackToPlay.album && trackToPlay.album.uri) ? {
+          context_uri: trackToPlay.album.uri,
+          offset: { uri: trackToPlay.uri }
+        } : {
+          uris: [trackToPlay.uri]
+        };
+
         await spotifyFetch("https://api.spotify.com/v1/me/player/play?device_id=" + dev.id, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ uris: [uriToPlay] })
+          body: JSON.stringify(body)
         });
         resetSearch();
         fadeOutDevicePicker();
