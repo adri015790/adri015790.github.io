@@ -657,8 +657,8 @@
   // Enter-Geste: kurz drücken = sofort abspielen,
   // 3 Sekunden halten = in die Warteschlange legen
   // ============================================================
-  const HOLD_PLAY_THRESHOLD = 750;   // ms – kürzer beim Loslassen: sofort abspielen
-  const HOLD_QUEUE_THRESHOLD = 3000; // ms – so lange halten: in die Warteschlange
+  const HOLD_PLAY_THRESHOLD = 250;   // ms – kürzer beim Loslassen: sofort abspielen
+  const HOLD_QUEUE_THRESHOLD = 1000; // ms – so lange halten: in die Warteschlange
   let holdState = null;
 
   function startHoldRing(targetIndex){
