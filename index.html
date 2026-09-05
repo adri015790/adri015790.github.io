@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Songauswahl</title>
+<title>Suche</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Manrope:opsz@20&display=swap" rel="stylesheet">
@@ -373,7 +373,7 @@
   // ============================================================
   // KONFIGURATION – hier eintragen
   // ============================================================
-  const CLIENT_ID = "86a8861f0fe441949d60c18b59be7862"; // aus dem Spotify Developer Dashboard
+  const CLIENT_ID = "DEINE_SPOTIFY_CLIENT_ID"; // aus dem Spotify Developer Dashboard
   // Redirect-URI wird automatisch aus der aktuellen Seiten-URL gebildet.
   // Trage GENAU diesen Wert (so wie die Seite später gehostet ist, ohne
   // Anhängsel) im Spotify Dashboard unter "Redirect URIs" ein.
@@ -659,30 +659,27 @@
   // Wiedergabe
   // ============================================================
   async function playTrack(track){
+    // Wichtig: Wird nur "uris": [track] ohne Album-Kontext übergeben, legt
+    // Spotify eine Warteschlange mit genau einem Song an - danach ist
+    // Schluss, egal ob Autoplay in der Spotify-App an ist. Mit
+    // context_uri (Album) + offset spielt Spotify normal weiter (Rest des
+    // Albums, danach greift ggf. Spotifys eigenes Autoplay).
     const deviceId = settings.pinnedDevice || null;
     const url = "https://api.spotify.com/v1/me/player/play" + (deviceId ? "?device_id=" + deviceId : "");
-    
-    const body = (track.album && track.album.uri) ? {
-      context_uri: track.album.uri,
-      offset: { uri: track.uri }
-    } : {
-      uris: [track.uri]
-    };
-
     const res = await spotifyFetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ context_uri: track.album.uri, offset: { uri: track.uri } })
     });
 
     if (res.status === 404 || res.status === 403){
+      // Kein aktives Gerät -> minimale Geräteauswahl anzeigen
       await showDevicePicker(track);
       return;
     }
 
     resetSearch();
     pollNowPlaying(true);
-  }
   }
 
   function resetSearch(){
@@ -691,7 +688,7 @@
     el.input.focus();
   }
 
-  async function showDevicePicker(trackToPlay){
+  async function showDevicePicker(track){
     const res = await spotifyFetch("https://api.spotify.com/v1/me/player/devices");
     if (!res.ok) return;
     const data = await res.json();
@@ -701,17 +698,10 @@
       row.className = "device-option";
       row.textContent = dev.name;
       row.addEventListener("click", async () => {
-        const body = (trackToPlay.album && trackToPlay.album.uri) ? {
-          context_uri: trackToPlay.album.uri,
-          offset: { uri: trackToPlay.uri }
-        } : {
-          uris: [trackToPlay.uri]
-        };
-
         await spotifyFetch("https://api.spotify.com/v1/me/player/play?device_id=" + dev.id, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
+          body: JSON.stringify({ context_uri: track.album.uri, offset: { uri: track.uri } })
         });
         resetSearch();
         fadeOutDevicePicker();
