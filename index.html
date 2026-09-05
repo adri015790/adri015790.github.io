@@ -6,7 +6,8 @@
 <title>Suche</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Manrope:opsz@20&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#3c382f;
@@ -18,14 +19,23 @@
     --danger:#c0725a;
     --results-width: 380px; /* wird per JS aus RESULTS_WIDTH_PX gesetzt */
     --radius-soft: 14px;
+    --phrase-font-size: 1.4rem; /* Größe der wechselnden Sätze über der Suche - hier anpassen */
   }
-.playfair-display-<uniquifier> {
-  font-family: "Playfair Display", serif;
-  font-optical-sizing: auto;
-  font-weight: 600;
-  font-style: normal;
-}
-
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Manrope', system-ui, sans-serif;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    min-height:100vh;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
 
   /* ---------- Login-Overlay ---------- */
   #login-overlay{
@@ -70,10 +80,13 @@
   #app.ready{opacity:1;}
 
   #phrase{
-    font-size:1.05rem;
+    font-family:'Playfair Display', serif;
+    font-optical-sizing:auto;
+    font-size:var(--phrase-font-size);
     font-weight:500;
+    font-style:normal;
     color:var(--ink-dim);
-    margin-bottom:22px;
+    margin-bottom:24px;
     min-height:1.4em;
     text-align:center;
   }
@@ -139,6 +152,18 @@
   }
   .result-item.active{background:var(--panel);}
   .result-item.active .result-title{color:var(--accent);}
+
+  #hold-ring{
+    position:fixed;
+    display:none;
+    pointer-events:none;
+    z-index:25;
+  }
+  #hold-ring rect{
+    fill:none;
+    stroke:var(--accent);
+    stroke-width:1.5;
+  }
 
   /* ---------- Einstellungen ---------- */
   #settings-btn{
@@ -308,6 +333,7 @@
     <div class="search-col">
       <input id="search-input" type="text" autocomplete="off" spellcheck="false" placeholder="" />
       <ul id="results-list"></ul>
+      <svg id="hold-ring"><rect id="hold-ring-rect"/></svg>
     </div>
   </div>
 
@@ -365,7 +391,7 @@
   // ============================================================
   // KONFIGURATION – hier eintragen
   // ============================================================
-  const CLIENT_ID = "86a8861f0fe441949d60c18b59be7862"; // aus dem Spotify Developer Dashboard
+  const CLIENT_ID = "DEINE_SPOTIFY_CLIENT_ID"; // aus dem Spotify Developer Dashboard
   // Redirect-URI wird automatisch aus der aktuellen Seiten-URL gebildet.
   // Trage GENAU diesen Wert (so wie die Seite später gehostet ist, ohne
   // Anhängsel) im Spotify Dashboard unter "Redirect URIs" ein.
@@ -627,6 +653,71 @@
     });
   }
 
+  // ============================================================
+  // Enter-Geste: kurz drücken = sofort abspielen,
+  // 3 Sekunden halten = in die Warteschlange legen
+  // ============================================================
+  const HOLD_PLAY_THRESHOLD = 750;   // ms – kürzer beim Loslassen: sofort abspielen
+  const HOLD_QUEUE_THRESHOLD = 3000; // ms – so lange halten: in die Warteschlange
+  let holdState = null;
+
+  function startHoldRing(targetIndex){
+    const li = el.results.children[targetIndex];
+    if (!li) return null;
+    const box = li.getBoundingClientRect();
+    const pad = 2;
+    const w = box.width + pad * 2 - 2;
+    const h = box.height + pad * 2 - 2;
+    const svg = document.getElementById("hold-ring");
+    const rect = document.getElementById("hold-ring-rect");
+    svg.style.left = (box.left - pad) + "px";
+    svg.style.top = (box.top - pad) + "px";
+    svg.setAttribute("width", w + 2);
+    svg.setAttribute("height", h + 2);
+    rect.setAttribute("x", 1);
+    rect.setAttribute("y", 1);
+    rect.setAttribute("width", w);
+    rect.setAttribute("height", h);
+    rect.setAttribute("rx", 10);
+    rect.setAttribute("ry", 10);
+    const perimeter = 2 * (w + h);
+    rect.setAttribute("stroke-dasharray", perimeter);
+    rect.style.strokeDashoffset = perimeter;
+    svg.style.display = "block";
+    return perimeter;
+  }
+
+  function updateHoldRing(perimeter, fraction){
+    document.getElementById("hold-ring-rect").style.strokeDashoffset =
+      perimeter * (1 - Math.max(0, Math.min(1, fraction)));
+  }
+
+  function hideHoldRing(){
+    document.getElementById("hold-ring").style.display = "none";
+  }
+
+  function tickHold(){
+    if (!holdState) return;
+    const elapsed = performance.now() - holdState.startTime;
+
+    if (elapsed >= HOLD_PLAY_THRESHOLD && holdState.perimeter === null){
+      holdState.perimeter = startHoldRing(holdState.targetIndex);
+    }
+    if (holdState.perimeter){
+      const fraction = (elapsed - HOLD_PLAY_THRESHOLD) / (HOLD_QUEUE_THRESHOLD - HOLD_PLAY_THRESHOLD);
+      updateHoldRing(holdState.perimeter, fraction);
+    }
+
+    if (elapsed >= HOLD_QUEUE_THRESHOLD && !holdState.queued){
+      holdState.queued = true;
+      queueTrack(currentResults[holdState.targetIndex]);
+      hideHoldRing();
+      return;
+    }
+
+    holdState.raf = requestAnimationFrame(tickHold);
+  }
+
   el.input.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown"){
       e.preventDefault();
@@ -638,13 +729,30 @@
       setSelected(Math.max(selectedIndex - 1, 0));
     } else if (e.key === "Enter"){
       e.preventDefault();
+      if (e.repeat || holdState) return; // Tastatur-Wiederholung / bereits am Halten ignorieren
       if (currentResults.length === 0) return;
       const idx = selectedIndex >= 0 ? selectedIndex : 0; // ohne Auswahl: relevantestes Ergebnis
-      playTrack(currentResults[idx]);
+      holdState = { targetIndex: idx, startTime: performance.now(), perimeter: null, queued: false, raf: null };
+      holdState.raf = requestAnimationFrame(tickHold);
     } else if (e.key === "Escape"){
       el.input.value = "";
       renderResults([]);
     }
+  });
+
+  el.input.addEventListener("keyup", (e) => {
+    if (e.key !== "Enter" || !holdState) return;
+    const elapsed = performance.now() - holdState.startTime;
+    cancelAnimationFrame(holdState.raf);
+    const target = currentResults[holdState.targetIndex];
+    const wasQueued = holdState.queued;
+    hideHoldRing();
+    holdState = null;
+    if (wasQueued) return; // während des Haltens schon in die Warteschlange gelegt
+    if (elapsed < HOLD_PLAY_THRESHOLD){
+      playTrack(target);
+    }
+    // dazwischen losgelassen (Ring unvollständig) -> abgebrochen, nichts passiert
   });
 
   // ============================================================
@@ -674,13 +782,27 @@
     pollNowPlaying(true);
   }
 
+  async function queueTrack(track){
+    const deviceId = settings.pinnedDevice || null;
+    const url = "https://api.spotify.com/v1/me/player/queue?" +
+      new URLSearchParams(Object.assign({ uri: track.uri }, deviceId ? { device_id: deviceId } : {}));
+    const res = await spotifyFetch(url, { method: "POST" });
+
+    if (res.status === 404 || res.status === 403){
+      await showDevicePicker(track, "queue");
+      return;
+    }
+
+    resetSearch();
+  }
+
   function resetSearch(){
     el.input.value = "";
     renderResults([]);
     el.input.focus();
   }
 
-  async function showDevicePicker(track){
+  async function showDevicePicker(track, mode = "play"){
     const res = await spotifyFetch("https://api.spotify.com/v1/me/player/devices");
     if (!res.ok) return;
     const data = await res.json();
@@ -690,14 +812,19 @@
       row.className = "device-option";
       row.textContent = dev.name;
       row.addEventListener("click", async () => {
-        await spotifyFetch("https://api.spotify.com/v1/me/player/play?device_id=" + dev.id, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ context_uri: track.album.uri, offset: { uri: track.uri } })
-        });
+        if (mode === "queue"){
+          await spotifyFetch("https://api.spotify.com/v1/me/player/queue?" +
+            new URLSearchParams({ uri: track.uri, device_id: dev.id }), { method: "POST" });
+        } else {
+          await spotifyFetch("https://api.spotify.com/v1/me/player/play?device_id=" + dev.id, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ context_uri: track.album.uri, offset: { uri: track.uri } })
+          });
+        }
         resetSearch();
         fadeOutDevicePicker();
-        pollNowPlaying(true);
+        if (mode !== "queue") pollNowPlaying(true);
       });
       el.devicePickerList.appendChild(row);
     });
