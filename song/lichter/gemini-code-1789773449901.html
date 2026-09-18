@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spotify Light Sync</title>
+  <style>
+    :root {
+      --bg-color: #121212;
+      --accent-color: #1db954;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+      transition: background-color 2s ease;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    img#cover {
+      width: 100%;
+      max-width: 280px;
+      height: 280px;
+      border-radius: 12px;
+      object-fit: cover;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      margin-bottom: 16px;
+    }
+    h2 { margin: 10px 0 4px; font-size: 1.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    p { margin: 0 0 16px; color: #b3b3b3; font-size: 0.9rem; }
+    .status-badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      background: rgba(255, 255, 255, 0.1);
+      margin-top: 10px;
+    }
+    .config-box {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      text-align: left;
+    }
+    input {
+      background: #282828;
+      border: 1px solid #404040;
+      color: #fff;
+      padding: 10px;
+      border-radius: 8px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      background: var(--accent-color);
+      color: #000;
+      font-weight: bold;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+    button:active { transform: scale(0.98); }
+    .color-preview {
+      width: 100%;
+      height: 12px;
+      border-radius: 6px;
+      margin-top: 10px;
+      background: #333;
+      transition: background-color 1.5s ease;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <img id="cover" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='280' height='280' fill='%23282828'></svg>" alt="Cover Art">
+    <h2 id="track-title">Keine Wiedergabe</h2>
+    <p id="artist-name">Warte auf Spotify...</p>
+    <div class="color-preview" id="color-preview"></div>
+    <div class="status-badge" id="status">Bereit</div>
+
+    <div class="config-box" id="ha-config" style="display: none;">
+      <label style="font-size: 0.8rem; color: #aaa;">Home Assistant Token (Long-Lived Access Token):</label>
+      <input type="password" id="ha-token-input" placeholder="Token hier einfügen...">
+      <button onclick="saveHaToken()">Speichern & Starten</button>
+    </div>
+  </div>
+
+  <script>
+    const CLIENT_ID = "86a8861f0fe441949d60c18b59be7862";
+    const HA_URL = "https://hawagener.duckdns.org:8123";
+    const LIGHT_ENTITIES = ["light.adris_lampe", "light.lampe_bett", "light.schreibtisch"];
+    const REDIRECT_URI = "https://adri015790.github.io/song/lichter";
+
+    let lastImageUri = "";
+    let lastRgb = null;
+
+    // Spotify Auth Check
+    function getAccessToken() {
+      const hash = window.location.hash.substring(1).split('&').reduce((initial, item) => {
+        if (item) {
+          let parts = item.split('=');
+          initial[parts[0]] = decodeURIComponent(parts[1]);
+        }
+        return initial;
+      }, {});
+
+      if (hash.access_token) {
+        localStorage.setItem('spotify_access_token', hash.access_token);
+        window.location.hash = '';
+        return hash.access_token;
+      }
+      return localStorage.getItem('spotify_access_token');
+    }
+
+    function loginSpotify() {
+      const scope = "user-read-currently-playing user-read-playback-state";
+      window.location.href = `https://accounts.spotify.com/authorize?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scope)}`;
+    }
+
+    function saveHaToken() {
+      const token = document.getElementById('ha-token-input').value.trim();
+      if (token) {
+        localStorage.setItem('ha_token', token);
+        document.getElementById('ha-config').style.display = 'none';
+        initSync();
+      }
+    }
+
+    // Dominante Farbe per Canvas extrahieren
+    function extractDominantColor(imgElement, callback) {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.src = imgElement.src;
+
+      img.onload = function() {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 50;
+        canvas.height = 50;
+
+        ctx.drawImage(img, 0, 0, 50, 50);
+        const imageData = ctx.getImageData(0, 0, 50, 50).data;
+
+        let r = 0, g = 0, b = 0, count = 0;
+
+        for (let i = 0; i < imageData.length; i += 16) { // Rasterabtastung
+          const pr = imageData[i];
+          const pg = imageData[i + 1];
+          const pb = imageData[i + 2];
+
+          // Sättigungsfilter (sehr dunkle/helle Grautöne ignorieren)
+          const max = Math.max(pr, pg, pb);
+          const min = Math.min(pr, pg, pb);
+          if (max - min > 15 && max > 30 && min < 220) {
+            r += pr;
+            g += pg;
+            b += pb;
+            count++;
+          }
+        }
+
+        if (count === 0) {
+          r = imageData[0]; g = imageData[1]; b = imageData[2]; count = 1;
+        }
+
+        callback([Math.round(r / count), Math.round(g / count), Math.round(b / count)]);
+      };
+    }
+
+    // Home Assistant API Call
+    async function setHaLights(rgb) {
+      const haToken = localStorage.getItem('ha_token');
+      if (!haToken) return;
+
+      try {
+        const response = await fetch(`${HA_URL}/api/services/light/turn_on`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${haToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            entity_id: LIGHT_ENTITIES,
+            rgb_color: rgb,
+            transition: 3 // 3 Sekunden sanfter Übergang
+          })
+        });
+
+        if (response.ok) {
+          document.getElementById('status').innerText = `Lichter synchronisiert: RGB(${rgb.join(',')})`;
+        } else {
+          document.getElementById('status').innerText = "HA Fehler: " + response.status;
+        }
+      } catch (err) {
+        document.getElementById('status').innerText = "HA Verbindungsfehler (CORS?)";
+      }
+    }
+
+    // Spotify API Polling
+    async function fetchCurrentlyPlaying() {
+      const token = getAccessToken();
+      if (!token) {
+        loginSpotify();
+        return;
+      }
+
+      try {
+        const res = await fetch("https://api.spotify.com/v1/me/player/currently-playing", {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (res.status === 401) {
+          loginSpotify();
+          return;
+        }
+
+        if (res.status === 204 || res.status > 400) {
+          document.getElementById('track-title').innerText = "Keine Musik aktiv";
+          document.getElementById('artist-name').innerText = "Starte Spotify auf einem Gerät";
+          return;
+        }
+
+        const data = await res.json();
+        if (data && data.item) {
+          const trackName = data.item.name;
+          const artistName = data.item.artists.map(a => a.name).join(', ');
+          const coverUrl = data.item.album.images[0]?.url;
+
+          document.getElementById('track-title').innerText = trackName;
+          document.getElementById('artist-name').innerText = artistName;
+
+          if (coverUrl && coverUrl !== lastImageUri) {
+            lastImageUri = coverUrl;
+            const imgElem = document.getElementById('cover');
+            imgElem.src = coverUrl;
+
+            extractDominantColor(imgElem, (rgb) => {
+              lastRgb = rgb;
+              document.getElementById('color-preview').style.backgroundColor = `rgb(${rgb.join(',')})`;
+              document.body.style.backgroundColor = `rgba(${rgb.join(',')}, 0.25)`;
+              setHaLights(rgb);
+            });
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function initSync() {
+      const haToken = localStorage.getItem('ha_token');
+      if (!haToken) {
+        document.getElementById('ha-config').style.display = 'flex';
+        document.getElementById('status').innerText = "Bitte Home Assistant Token eingeben";
+        return;
+      }
+
+      fetchCurrentlyPlaying();
+      setInterval(fetchCurrentlyPlaying, 5000); // alle 5 Sekunden prüfen
+    }
+
+    window.onload = initSync;
+  </script>
+</body>
+</html>
