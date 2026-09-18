@@ -351,9 +351,9 @@
 
   <div id="app">
     <div id="phrase"></div>
-    <div class="search-col">
-      <input id="search-input" type="text" autocomplete="off" spellcheck="false" placeholder="" />
-      <input id="search-input" class="morph-cover-target" type="text" ... />
+  <div class="search-col">
+      <!-- Klasse morph-cover-target direkt im echten Input eingefügt -->
+      <input id="search-input" class="morph-cover-target" type="text" autocomplete="off" spellcheck="false" placeholder="" />
       <ul id="results-list"></ul>
       <svg id="hold-ring"><rect id="hold-ring-rect"/></svg>
     </div>
@@ -404,8 +404,7 @@
     <div id="device-picker-list"></div>
   </div>
 
-  <div id="now-playing" class="hidden">
-    <div id="now-playing" class="hidden morph-box-target">...</div>
+  <div id="now-playing" class="hidden morph-box-target">
     <img id="np-cover" src="" alt="" />
     <div id="np-info">
       <div id="np-title"></div>
