@@ -860,8 +860,9 @@
     return res.json();
   }
 
-  function updateNowPlayingUI(state){
+function updateNowPlayingUI(state){
     if (!state || !state.item){
+      document.title = "Suche";
       el.nowPlaying.classList.add("hidden");
       localTicking = false;
       return;
@@ -874,9 +875,8 @@
     el.npCover.src = cover.url || "";
     el.npTitle.textContent = track.name;
     el.npArtist.textContent = (track.artists || []).map(a => a.name).join(", ");
+    document.title = track.name + " – " + (track.artists || []).map(a => a.name).join(", ");
     localProgressMs = state.progress_ms || 0;
-    localDurationMs = track.duration_ms || 0;
-    localTicking = !!state.is_playing;
     renderTime();
     el.nowPlaying.classList.remove("hidden");
   }
