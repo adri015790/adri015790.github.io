@@ -39,7 +39,13 @@
     overflow-x:hidden;
     -webkit-font-smoothing:antialiased;
   }
-
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden; /* Blendet die Scrollleiste aus und sperrt das Scrollen */
+  }
   #bg{ position:fixed; inset:0; overflow:hidden; z-index:-1; background:var(--bg); }
   #bg-img{
     position:absolute; inset:-10%;
