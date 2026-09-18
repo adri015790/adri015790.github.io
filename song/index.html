@@ -129,6 +129,12 @@
   }
   #control-box.hidden{display:none;}
 
+  :root {
+    /* HIGHLIGHT: Hier kannst du die Zeiten ganz einfach anpassen (in Sekunden) */
+    --box-anim-in: 0.35s;   /* Zeit beim Wiederkommen (Einblenden) */
+    --box-anim-out: 0.2s;   /* Zeit beim Abtauchen (Ausblenden) */
+  }
+
   #control-buttons {
     display: flex; align-items: center; justify-content: center; gap: 22px;
     background: var(--panel); border: 1.5px solid #4c4c44;
@@ -136,30 +142,26 @@
     padding: 8px 24px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.35);
 
-    /* GPU-Hardwarebeschleunigung für flüssiges Rendering */
+    /* 3D-Layer erzwingen für 60 FPS ohne Ruckler */
+    transform: translate3d(0, 0, 0) scale(1);
+    backface-visibility: hidden;
     will-change: transform, opacity;
 
-    /* Sanftes Einblenden / Zurückkommen mit natürlichem Abfedern */
-    transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), 
-                opacity 0.35s ease;
+    /* Animation für das Wiederkommen */
+    transition: transform var(--box-anim-in) cubic-bezier(0.16, 1, 0.3, 1), 
+                opacity var(--box-anim-in) ease;
   }
 
   /* Im Fokus-Modus (mittlerer Mausklick) */
   body.focus-mode #control-buttons {
-    transform: translateY(45px) scale(0.92);
+    /* translate3d stottert nicht mehr */
+    transform: translate3d(0, 30px, 0) scale(0.96);
     opacity: 0;
     pointer-events: none;
 
-    /* Schnelleres, dynamisches Abtauchen beim Weggehen */
-    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), 
-                opacity 0.25s ease;
-  }
-
-  /* Im Fokus-Modus geht die Button-Box nach unten weg */
-  body.focus-mode #control-buttons {
-    transform: translateY(100px);
-    opacity: 0;
-    pointer-events: none;
+    /* Animation für das Abtauchen */
+    transition: transform var(--box-anim-out) cubic-bezier(0.4, 0, 0.2, 1), 
+                opacity var(--box-anim-out) ease;
   }
 
   .ctrl-btn{
