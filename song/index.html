@@ -129,13 +129,30 @@
   }
   #control-box.hidden{display:none;}
 
-  #control-buttons{
-    display:flex; align-items:center; justify-content:center; gap:22px;
-    background:var(--panel); border:1.5px solid #4c4c44;
-    border-radius:6px; /* Abgerundete Kapsel-Form */
-    padding:8px 24px;
-    box-shadow:0 10px 30px rgba(0,0,0,0.35);
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+  #control-buttons {
+    display: flex; align-items: center; justify-content: center; gap: 22px;
+    background: var(--panel); border: 1.5px solid #4c4c44;
+    border-radius: 6px;
+    padding: 8px 24px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+
+    /* GPU-Hardwarebeschleunigung für flüssiges Rendering */
+    will-change: transform, opacity;
+
+    /* Sanftes Einblenden / Zurückkommen mit natürlichem Abfedern */
+    transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), 
+                opacity 0.35s ease;
+  }
+
+  /* Im Fokus-Modus (mittlerer Mausklick) */
+  body.focus-mode #control-buttons {
+    transform: translateY(45px) scale(0.92);
+    opacity: 0;
+    pointer-events: none;
+
+    /* Schnelleres, dynamisches Abtauchen beim Weggehen */
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), 
+                opacity 0.25s ease;
   }
 
   /* Im Fokus-Modus geht die Button-Box nach unten weg */
