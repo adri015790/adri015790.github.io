@@ -348,6 +348,7 @@
     el.title.textContent = track.name;
     el.artist.textContent = (track.artists || []).map(a => a.name).join(", ");
     el.album.textContent = track.album ? track.album.name : "";
+    document.title = track.name + " – " + (track.artists || []).map(a => a.name).join(", ");
     isPlaying = !!state.is_playing;
     updatePlayPauseIcon();
     localProgressMs = state.progress_ms || 0;
