@@ -861,25 +861,27 @@
   }
 
 function updateNowPlayingUI(state){
-    if (!state || !state.item){
-      document.title = "Suche";
-      el.nowPlaying.classList.add("hidden");
-      localTicking = false;
-      return;
-    }
-    if (el.devicePicker && !el.devicePicker.classList.contains("hidden") && state.is_playing){
-      fadeOutDevicePicker();
-    }
-    const track = state.item;
-    const cover = (track.album && track.album.images && track.album.images[track.album.images.length - 1]) || {};
-    el.npCover.src = cover.url || "";
-    el.npTitle.textContent = track.name;
-    el.npArtist.textContent = (track.artists || []).map(a => a.name).join(", ");
-    document.title = track.name + " – " + (track.artists || []).map(a => a.name).join(", ");
-    localProgressMs = state.progress_ms || 0;
-    renderTime();
-    el.nowPlaying.classList.remove("hidden");
+  if (!state || !state.item){
+    document.title = "Suche";
+    el.nowPlaying.classList.add("hidden");
+    localTicking = false;
+    return;
   }
+  if (el.devicePicker && !el.devicePicker.classList.contains("hidden") && state.is_playing){
+    fadeOutDevicePicker();
+  }
+  const track = state.item;
+  const cover = (track.album && track.album.images && track.album.images[track.album.images.length - 1]) || {};
+  el.npCover.src = cover.url || "";
+  el.npTitle.textContent = track.name;
+  el.npArtist.textContent = (track.artists || []).map(a => a.name).join(", ");
+  document.title = track.name + " – " + (track.artists || []).map(a => a.name).join(", ");
+  localProgressMs = state.progress_ms || 0;
+  localDurationMs = track.duration_ms || 0;
+  localTicking = !!state.is_playing;
+  renderTime();
+  el.nowPlaying.classList.remove("hidden");
+}
 
   function renderTime(){
     el.npCurrent.textContent = formatTime(localProgressMs);
