@@ -197,13 +197,12 @@
   </div>
 
   <div id="page" class="hidden">
-    <div id="cover-card"><img id="cover-img" src="" alt="" /></div>
+    <!-- Die Klasse morph-cover-target wurde hier direkt hinzugefügt -->
+    <div id="cover-card" class="morph-cover-target"><img id="cover-img" src="" alt="" /></div>
     <div id="title"></div>
     <div id="artist"></div>
     <div id="album"></div>
-    <div id="cover-card" class="morph-cover-target">...</div>
   </div>
-
   <button id="settings-btn" title="Einstellungen">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="3"></circle>
@@ -234,7 +233,8 @@
     </div>
   </div>
 
-  <div id="control-box" class="hidden">
+<!-- Die Klasse morph-box-target wandert in den Haupt-Container -->
+  <div id="control-box" class="hidden morph-box-target">
     <div id="control-buttons">
       <button id="prev-btn" class="ctrl-btn" title="Zurück">
         <svg viewBox="0 0 20 20" fill="currentColor"><rect x="3" y="3" width="2" height="14"/><polygon points="17,3 17,17 7,10"/></svg>
@@ -248,7 +248,6 @@
       </button>
     </div>
     <div id="control-time">0:00 / -0:00</div>
-    <div id="control-box" class="hidden morph-box-target">...</div>
   </div>
 
   <div id="queue-overlay" class="hidden">
