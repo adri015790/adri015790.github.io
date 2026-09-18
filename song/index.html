@@ -142,26 +142,23 @@
     padding: 8px 24px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.35);
 
-    /* 3D-Layer erzwingen für 60 FPS ohne Ruckler */
-    transform: translate3d(0, 0, 0) scale(1);
-    backface-visibility: hidden;
+    /* GPU-Hardwarebeschleunigung für flüssiges Rendering */
     will-change: transform, opacity;
 
-    /* Animation für das Wiederkommen */
-    transition: transform var(--box-anim-in) cubic-bezier(0.16, 1, 0.3, 1), 
-                opacity var(--box-anim-in) ease;
+    /* Sanftes Einblenden / Zurückkommen mit natürlichem Abfedern */
+    transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), 
+                opacity 0.35s ease;
   }
 
   /* Im Fokus-Modus (mittlerer Mausklick) */
   body.focus-mode #control-buttons {
-    /* translate3d stottert nicht mehr */
-    transform: translate3d(0, 30px, 0) scale(0.96);
+    transform: translateY(45px) scale(0.92);
     opacity: 0;
     pointer-events: none;
 
-    /* Animation für das Abtauchen */
-    transition: transform var(--box-anim-out) cubic-bezier(0.4, 0, 0.2, 1), 
-                opacity var(--box-anim-out) ease;
+    /* Schnelleres, dynamisches Abtauchen beim Weggehen */
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), 
+                opacity 0.25s ease;
   }
 
   .ctrl-btn{
