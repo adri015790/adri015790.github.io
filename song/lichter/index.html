@@ -21,7 +21,7 @@
       margin: 0;
       padding: 20px;
       box-sizing: border-box;
-      transition: background-color 2s ease;
+      transition: background-color 1.5s ease;
     }
     .card {
       background: rgba(255, 255, 255, 0.05);
@@ -86,7 +86,7 @@
       border-radius: 6px;
       margin-top: 10px;
       background: #333;
-      transition: background-color 1.5s ease;
+      transition: background-color 1s ease;
     }
   </style>
 </head>
@@ -114,7 +114,6 @@
 
     let lastImageUri = "";
 
-    // PKCE Generierung
     function generateRandomString(length) {
       const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
       let text = '';
@@ -193,7 +192,7 @@
       }
     }
 
-    // Dominante Farbe extrahieren
+    // Dominante Farbe extrahieren & abdunkeln
     function extractDominantColor(imgUrl, callback) {
       const img = new Image();
       img.crossOrigin = "Anonymous";
@@ -227,7 +226,13 @@
           r = imageData[0]; g = imageData[1]; b = imageData[2]; count = 1;
         }
 
-        callback([Math.round(r / count), Math.round(g / count), Math.round(b / count)]);
+        // Abdunklungsfaktor (0.65 = 35% dunkler)
+        const darkenFactor = 0.65;
+        const finalR = Math.round((r / count) * darkenFactor);
+        const finalG = Math.round((g / count) * darkenFactor);
+        const finalB = Math.round((b / count) * darkenFactor);
+
+        callback([finalR, finalG, finalB]);
       };
       img.src = imgUrl;
     }
@@ -247,7 +252,7 @@
           body: JSON.stringify({
             entity_id: LIGHT_ENTITIES,
             rgb_color: rgb,
-            transition: 3
+            transition: 1 // 1 Sekunde Übergang statt 3s für schnellere Reaktion
           })
         });
 
@@ -261,7 +266,7 @@
       }
     }
 
-    // Spotify API
+    // Spotify API Polling
     async function fetchCurrentlyPlaying() {
       const token = localStorage.getItem('spotify_access_token');
       if (!token) {
@@ -326,7 +331,7 @@
       }
 
       fetchCurrentlyPlaying();
-      setInterval(fetchCurrentlyPlaying, 5000);
+      setInterval(fetchCurrentlyPlaying, 2000); // Polling auf 2 Sekunden verkürzt
     }
 
     window.onload = initSync;
