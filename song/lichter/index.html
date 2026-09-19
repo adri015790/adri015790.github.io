@@ -241,7 +241,7 @@
           finalS = 0.90;
           // Helligkeit im tiefen Bereich (18% - 26%) für dunkles, sattes Blau
           const avgL = weightedL / totalWeight;
-          finalL = Math.max(0.18, Math.min(0.26, avgL));
+          finalL = Math.max(0.14, Math.min(0.26, avgL));
         }
 
         const finalRgb = hslToRgb(finalH, finalS, finalL);
