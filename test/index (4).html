@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Suche</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#26231e;
+    --ink:#f6f2e9;
+    --ink-dim:rgba(246,242,233,.62);
+    --accent:#e3b25e;
+    --danger:#ee9078;
+    --results-width: 380px; /* wird per JS aus RESULTS_WIDTH_PX gesetzt */
+    --radius-soft: 18px;
+    --radius-glass: 26px; /* Rundung der Glas-Flächen - hier anpassen */
+    --phrase-font-size: 1.4rem; /* Größe der wechselnden Sätze über der Suche - hier anpassen */
+
+    /* Liquid-Glass-Material */
+    --glass-fill: linear-gradient(155deg, rgba(255,255,255,.20) 0%, rgba(255,255,255,.06) 48%, rgba(255,255,255,.11) 100%);
+    --glass-blur: blur(28px) saturate(185%) brightness(1.06);
+    --glass-shadow:
+      inset 0 1px 1px rgba(255,255,255,.45),
+      inset 0 -1px 1px rgba(255,255,255,.10),
+      inset 0 0 24px rgba(255,255,255,.06),
+      0 1px 2px rgba(0,0,0,.25),
+      0 22px 48px -16px rgba(0,0,0,.65);
+    --field-fill: rgba(255,255,255,.09);
+    --field-line: rgba(255,255,255,.14);
+  }
+  *{box-sizing:border-box;}
+  html{
+    height:100%;
+    background:var(--bg);
+  }
+  body{
+    height:100%;
+    margin:0;
+    background:transparent;
+    color:var(--ink);
+    font-family:-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", 'Inter', system-ui, sans-serif;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    min-height:100vh;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+    color-scheme:dark;
+  }
+
+  /* ---------- Licht-Hintergrund (gibt dem Glas etwas zum Brechen) ---------- */
+  .ambient{
+    position:fixed; inset:0;
+    z-index:-1;
+    overflow:hidden;
+    pointer-events:none;
+  }
+  .ambient i{
+    position:absolute;
+    width:52vmax; height:52vmax;
+    border-radius:50%;
+    filter:blur(90px);
+    opacity:.55;
+    will-change:transform;
+    animation:drift 46s ease-in-out infinite alternate;
+  }
+  .ambient i:nth-child(1){background:#cf9b3e; top:-20%; left:-14%; --dx:9vmax; --dy:6vmax;}
+  .ambient i:nth-child(2){background:#b5563f; bottom:-28%; right:-12%; --dx:-8vmax; --dy:-5vmax; animation-duration:58s;}
+  .ambient i:nth-child(3){background:#3f7f86; top:30%; left:46%; width:38vmax; height:38vmax; opacity:.38; --dx:-7vmax; --dy:7vmax; animation-duration:52s;}
+  .ambient i:nth-child(4){background:#7a5a9c; bottom:-12%; left:4%; width:30vmax; height:30vmax; opacity:.32; --dx:8vmax; --dy:-6vmax; animation-duration:64s;}
+  @keyframes drift{
+    to{transform:translate3d(var(--dx), var(--dy), 0) scale(1.12);}
+  }
+
+  /* ---------- Glas: gemeinsames Material ---------- */
+  .search-field, #results-list, #now-playing, #settings-panel, #device-picker,
+  #settings-btn, .nav-btn, #login-btn{
+    background:var(--glass-fill);
+    -webkit-backdrop-filter:var(--glass-blur);
+    backdrop-filter:var(--glass-blur);
+    box-shadow:var(--glass-shadow), var(--ring, 0 0 0 0 transparent);
+    border:0;
+  }
+  /* Lichtkante: heller Rand oben links / unten rechts wie geschliffenes Glas */
+  .search-field::before, #results-list::before, #now-playing::before, #settings-panel::before,
+  #device-picker::before, #settings-btn::before, .nav-btn::before, #login-btn::before{
+    content:"";
+    position:absolute; inset:0;
+    border-radius:inherit;
+    padding:1px;
+    background:linear-gradient(140deg, rgba(255,255,255,.75) 0%, rgba(255,255,255,0) 36%, rgba(255,255,255,0) 64%, rgba(255,255,255,.4) 100%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;
+    mask:linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    pointer-events:none;
+  }
+
+  /* ---------- Login-Overlay ---------- */
+  #login-overlay{
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    background:transparent;
+    z-index:50;
+  }
+  #login-overlay.hidden{display:none;}
+  #login-btn{
+    position:relative;
+    font-family:inherit;
+    font-size:1.05rem;
+    font-weight:600;
+    color:var(--ink);
+    padding:16px 32px;
+    border-radius:999px;
+    cursor:pointer;
+    letter-spacing:-.005em;
+    transition:transform .15s ease;
+  }
+  #login-btn:hover{--glass-fill:linear-gradient(155deg, rgba(255,255,255,.28) 0%, rgba(255,255,255,.10) 48%, rgba(255,255,255,.17) 100%);}
+  #login-btn:active{transform:scale(.97);}
+  #login-hint{
+    position:absolute;
+    bottom:14%;
+    color:var(--ink-dim);
+    font-size:.85rem;
+    max-width:320px;
+    text-align:center;
+    line-height:1.45;
+  }
+
+  /* ---------- Hauptbereich ---------- */
+  #app{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    width:100%;
+    padding:24px;
+    opacity:0;
+    transition:opacity .5s ease;
+  }
+  #app.ready{opacity:1;}
+
+  #phrase{
+    font-size:var(--phrase-font-size);
+    font-weight:600;
+    letter-spacing:-.015em;
+    color:rgba(246,242,233,.78);
+    text-shadow:0 1px 28px rgba(0,0,0,.35);
+    margin-bottom:24px;
+    min-height:1.4em;
+    text-align:center;
+  }
+
+  .search-col{
+    width:var(--results-width);
+    max-width:92vw;
+  }
+
+  .search-field{
+    position:relative;
+    width:100%;
+    border-radius:999px;
+    transition:box-shadow .25s ease;
+  }
+  .search-field:focus-within{
+    --ring:0 0 0 1.5px rgba(227,178,94,.5), 0 0 38px rgba(227,178,94,.22);
+  }
+  #search-input{
+    display:block;
+    width:100%;
+    font-family:inherit;
+    font-size:1.2rem;
+    font-weight:500;
+    letter-spacing:-.01em;
+    color:var(--ink);
+    caret-color:var(--accent);
+    background:transparent;
+    border:0;
+    border-radius:inherit;
+    padding:17px 28px;
+    outline:none;
+  }
+  #search-input::placeholder{color:var(--ink-dim);}
+
+  #results-list{
+    position:relative;
+    list-style:none;
+    margin:12px 0 0;
+    padding:8px;
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    border-radius:var(--radius-glass);
+  }
+  #results-list:empty{display:none;}
+  .result-item{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:8px 12px 8px 8px;
+    border-radius:18px;
+    cursor:pointer;
+  }
+  .result-item img{
+    width:42px; height:42px;
+    border-radius:10px;
+    object-fit:cover;
+    flex-shrink:0;
+    background:var(--field-fill);
+    box-shadow:0 0 0 1px rgba(255,255,255,.12), 0 4px 10px -4px rgba(0,0,0,.5);
+  }
+  .result-text{min-width:0;}
+  .result-title{
+    font-size:.95rem;
+    font-weight:600;
+    letter-spacing:-.005em;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .result-artist{
+    font-size:.8rem;
+    color:var(--ink-dim);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .result-item.active{
+    background:rgba(255,255,255,.15);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.35), inset 0 0 0 1px rgba(255,255,255,.08);
+  }
+
+  #hold-ring{
+    position:fixed;
+    display:none;
+    pointer-events:none;
+    z-index:25;
+  }
+  #hold-ring rect{
+    fill:none;
+    stroke:var(--accent);
+    stroke-width:2;
+    filter:drop-shadow(0 0 6px rgba(227,178,94,.7));
+  }
+
+  /* ---------- Runde Glas-Knöpfe (Zahnrad + Player-Link) ---------- */
+  #settings-btn, .nav-btn{
+    position:fixed;
+    top:16px;
+    width:42px; height:42px;
+    border-radius:50%;
+    display:grid;
+    place-items:center;
+    padding:0;
+    color:var(--ink-dim);
+    cursor:pointer;
+    text-decoration:none;
+    z-index:40;
+    transition:color .15s ease, transform .15s ease;
+  }
+  #settings-btn{right:16px;}
+  .nav-btn{right:68px;}
+  #settings-btn:hover, .nav-btn:hover{
+    color:var(--ink);
+    --glass-fill:linear-gradient(155deg, rgba(255,255,255,.28) 0%, rgba(255,255,255,.10) 48%, rgba(255,255,255,.17) 100%);
+  }
+  #settings-btn:active, .nav-btn:active{transform:scale(.93);}
+  #settings-btn svg, .nav-btn svg{width:20px; height:20px; display:block;}
+
+  /* ---------- Einstellungen ---------- */
+  #settings-panel{
+    position:fixed;
+    top:68px; right:16px;
+    width:280px;
+    border-radius:var(--radius-glass);
+    padding:18px;
+    z-index:41;
+  }
+  #settings-panel.hidden{display:none;}
+  #settings-panel h2{
+    font-size:.9rem;
+    font-weight:600;
+    letter-spacing:-.005em;
+    margin:0 0 14px;
+    color:var(--ink);
+  }
+  .settings-row{margin-bottom:16px;}
+  .settings-row:last-child{margin-bottom:0;}
+  .settings-label{
+    display:block;
+    font-size:.78rem;
+    color:var(--ink-dim);
+    margin-bottom:6px;
+  }
+  .settings-row select,
+  .settings-row input[type=number]{
+    width:100%;
+    font-family:inherit;
+    background:var(--field-fill);
+    color:var(--ink);
+    border:1px solid var(--field-line);
+    border-radius:12px;
+    padding:9px 12px;
+    font-size:.85rem;
+    box-shadow:inset 0 1px 2px rgba(0,0,0,.18);
+  }
+  .settings-row select option{background:#2b2823; color:#f6f2e9;}
+  .settings-row select:focus,
+  .settings-row input[type=number]:focus{
+    outline:none;
+    border-color:rgba(227,178,94,.6);
+    box-shadow:0 0 0 3px rgba(227,178,94,.18);
+  }
+
+  /* Regler wie bei iOS: weißer Knopf auf heller Schiene */
+  .settings-row input[type=range]{
+    -webkit-appearance:none; appearance:none;
+    width:100%;
+    height:28px;
+    padding:0;
+    background:transparent;
+    border:0;
+    cursor:pointer;
+  }
+  .settings-row input[type=range]:focus{outline:none;}
+  .settings-row input[type=range]::-webkit-slider-runnable-track{
+    height:6px; border-radius:999px;
+    background:rgba(255,255,255,.22);
+    box-shadow:inset 0 1px 2px rgba(0,0,0,.3);
+  }
+  .settings-row input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none;
+    width:22px; height:22px; margin-top:-8px;
+    border-radius:50%;
+    background:linear-gradient(#ffffff, #e8e3d8);
+    box-shadow:0 2px 8px rgba(0,0,0,.45), inset 0 -1px 1px rgba(0,0,0,.12);
+  }
+  .settings-row input[type=range]::-moz-range-track{
+    height:6px; border-radius:999px;
+    background:rgba(255,255,255,.22);
+  }
+  .settings-row input[type=range]::-moz-range-thumb{
+    width:22px; height:22px; border:0;
+    border-radius:50%;
+    background:linear-gradient(#ffffff, #e8e3d8);
+    box-shadow:0 2px 8px rgba(0,0,0,.45);
+  }
+  .settings-row input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px rgba(227,178,94,.5), 0 2px 8px rgba(0,0,0,.45);}
+
+  #account-name{font-size:.88rem; font-weight:600; margin:0 0 10px;}
+  .settings-btn-row{
+    width:100%;
+    font-family:inherit;
+    font-size:.82rem;
+    font-weight:600;
+    background:rgba(238,144,120,.12);
+    color:var(--danger);
+    border:1px solid rgba(238,144,120,.35);
+    border-radius:999px;
+    padding:9px 0;
+    cursor:pointer;
+    transition:background .15s ease;
+  }
+  .settings-btn-row:hover{background:rgba(238,144,120,.22);}
+
+  /* ---------- Geräteauswahl ---------- */
+  #device-picker{
+    position:fixed;
+    bottom:122px;
+    left:50%;
+    transform:translateX(-50%);
+    width:320px;
+    border-radius:22px;
+    padding:10px;
+    z-index:35;
+    transition:opacity 1s ease;
+  }
+  #device-picker.hidden{display:none;}
+  #device-picker.fading{opacity:0;}
+  .device-picker-title{
+    font-size:.75rem;
+    color:var(--ink-dim);
+    margin:4px 8px 8px;
+  }
+  .device-option{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:9px 12px;
+    border-radius:12px;
+    cursor:pointer;
+    font-size:.88rem;
+    font-weight:500;
+  }
+  .device-option:hover{background:rgba(255,255,255,.14);}
+
+  /* ---------- Now Playing ---------- */
+  #now-playing{
+    position:fixed;
+    bottom:24px;
+    left:50%;
+    transform:translateX(-50%);
+    width:400px;
+    max-width:92vw;
+    border-radius:var(--radius-glass);
+    padding:12px 20px 12px 12px; /* 26px Außenrundung - 12px Rand = 14px Cover-Rundung */
+    display:flex;
+    align-items:center;
+    gap:14px;
+    z-index:30;
+  }
+  #now-playing.hidden{display:none;}
+  #np-cover{
+    width:50px; height:50px;
+    border-radius:14px;
+    object-fit:cover;
+    flex-shrink:0;
+    background:var(--field-fill);
+    box-shadow:0 0 0 1px rgba(255,255,255,.14), 0 6px 14px -4px rgba(0,0,0,.55);
+  }
+  #np-info{min-width:0; flex:1;}
+  #np-title{
+    font-size:.92rem;
+    font-weight:600;
+    letter-spacing:-.005em;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  #np-artist{
+    font-size:.78rem;
+    color:var(--ink-dim);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  #np-time{
+    font-size:.74rem;
+    color:var(--ink-dim);
+    font-variant-numeric:tabular-nums;
+    flex-shrink:0;
+  }
+
+  /* ---------- Tastatur-Fokus ---------- */
+  #login-btn:focus-visible, #settings-btn:focus-visible, .nav-btn:focus-visible, .settings-btn-row:focus-visible{
+    outline:2px solid var(--accent);
+    outline-offset:3px;
+  }
+
+  /* ---------- Fallbacks ---------- */
+  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+    :root{--glass-fill:linear-gradient(155deg, rgba(88,82,72,.94), rgba(62,58,50,.94));}
+  }
+  @media (prefers-reduced-transparency: reduce){
+    :root{--glass-fill:linear-gradient(155deg, rgba(88,82,72,.96), rgba(62,58,50,.96)); --glass-blur:none;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;}
+    .ambient i{animation:none;}
+  }
+</style>
+</head>
+<body>
+
+  <div class="ambient" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+  <div id="login-overlay">
+    <button id="login-btn">Mit Spotify verbinden</button>
+    <div id="login-hint">Einmalig nötig. Danach öffnet sich das Tool jedes Mal direkt in der Suche.</div>
+  </div>
+
+  <div id="app">
+    <div id="phrase"></div>
+  <div class="search-col">
+      <div class="search-field">
+        <!-- Klasse morph-cover-target direkt im echten Input eingefügt -->
+        <input id="search-input" class="morph-cover-target" type="text" autocomplete="off" spellcheck="false" placeholder="" />
+      </div>
+      <ul id="results-list"></ul>
+      <svg id="hold-ring"><rect id="hold-ring-rect"/></svg>
+    </div>
+  </div>
+
+  <button id="settings-btn" title="Einstellungen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    </svg>
+  </button>
+  <a href="https://adri015790.github.io/song/" title="Zum Player" class="nav-btn">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 18V5l12-2v13"></path>
+    <circle cx="6" cy="18" r="3"></circle>
+    <circle cx="18" cy="16" r="3"></circle>
+  </svg>
+</a>
+
+  <div id="settings-panel" class="hidden">
+    <h2>Einstellungen</h2>
+
+    <div class="settings-row">
+      <p id="account-name">–</p>
+      <button id="logout-btn" class="settings-btn-row">Abmelden / Konto wechseln</button>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="device-select">Wiedergabegerät</label>
+      <select id="device-select">
+        <option value="">Automatisch (aktuelles Gerät)</option>
+      </select>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="volume-slider">Lautstärke</label>
+      <input id="volume-slider" type="range" min="0" max="100" value="50" />
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="result-count">Anzahl Vorschläge</label>
+      <input id="result-count" type="number" min="5" max="10" value="7" />
+    </div>
+  </div>
+
+  <div id="device-picker" class="hidden">
+    <div class="device-picker-title">Wo abspielen?</div>
+    <div id="device-picker-list"></div>
+  </div>
+
+  <div id="now-playing" class="hidden morph-box-target">
+    <img id="np-cover" src="" alt="" />
+    <div id="np-info">
+      <div id="np-title"></div>
+      <div id="np-artist"></div>
+    </div>
+    <div id="np-time"><span id="np-current">0:00</span> / <span id="np-remaining">-0:00</span></div>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ============================================================
+  // KONFIGURATION – hier eintragen
+  // ============================================================
+  const CLIENT_ID = "86a8861f0fe441949d60c18b59be7862"; // aus dem Spotify Developer Dashboard
+  // Redirect-URI wird automatisch aus der aktuellen Seiten-URL gebildet.
+  // Trage GENAU diesen Wert (so wie die Seite später gehostet ist, ohne
+  // Anhängsel) im Spotify Dashboard unter "Redirect URIs" ein.
+  const REDIRECT_URI = window.location.origin + window.location.pathname;
+  const SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing";
+
+  // Breite von Suchfeld & Ergebnisliste in px. Die exakte physische Größe
+  // auf deinem Monitor hängt von dessen Pixeldichte/Zoom ab – am
+  // zuverlässigsten stellst du das ein, indem du dein Handy neben den
+  // Bildschirm hältst und diesen Wert (und/oder die Browser-Zoomstufe)
+  // anpasst, bis es passt.
+  const RESULTS_WIDTH_PX = 820;
+  document.documentElement.style.setProperty("--results-width", RESULTS_WIDTH_PX + "px");
+
+  // Sätze über dem Suchfeld
+  const PHRASES_NOTHING_PLAYING = [
+    "Es kann losgehen.",
+    "Bereit für den ersten Song?",
+    "Fang mit was Gutem an.",
+    "Was hörst du als Erstes?",
+    "Leg los, wenn du willst.",
+    "Ein Song wartet auf dich.",
+    "Zeit für Musik.",
+    "Worauf hast du Lust?",
+    "Stille war gestern.",
+    "Mach den Anfang."
+  ];
+  const PHRASES_ALREADY_PLAYING = [
+    "Was willst du hören?",
+    "Was soll stattdessen laufen?",
+    "Wonach steht dir der Sinn?",
+    "Was darf's diesmal sein?",
+    "Was kommt als Nächstes?",
+    "Worauf hast du jetzt Lust?",
+    "Was läuft gleich bei dir?",
+    "Wechsel den Song.",
+    "Was soll jetzt laufen?",
+    "Such dir was Neues."
+  ];
+
+  // ============================================================
+  // Elemente
+  // ============================================================
+  const el = {
+    loginOverlay: document.getElementById("login-overlay"),
+    loginBtn: document.getElementById("login-btn"),
+    app: document.getElementById("app"),
+    phrase: document.getElementById("phrase"),
+    input: document.getElementById("search-input"),
+    results: document.getElementById("results-list"),
+    settingsBtn: document.getElementById("settings-btn"),
+    settingsPanel: document.getElementById("settings-panel"),
+    accountName: document.getElementById("account-name"),
+    logoutBtn: document.getElementById("logout-btn"),
+    deviceSelect: document.getElementById("device-select"),
+    volumeSlider: document.getElementById("volume-slider"),
+    resultCountInput: document.getElementById("result-count"),
+    devicePicker: document.getElementById("device-picker"),
+    devicePickerList: document.getElementById("device-picker-list"),
+    nowPlaying: document.getElementById("now-playing"),
+    npCover: document.getElementById("np-cover"),
+    npTitle: document.getElementById("np-title"),
+    npArtist: document.getElementById("np-artist"),
+    npCurrent: document.getElementById("np-current"),
+    npRemaining: document.getElementById("np-remaining"),
+  };
+
+  // ============================================================
+  // Settings (localStorage)
+  // ============================================================
+  const settings = Object.assign({
+    pinnedDevice: "",
+    resultCount: 7,
+    volume: 50
+  }, JSON.parse(localStorage.getItem("sp_settings") || "{}"));
+
+  function saveSettings(){
+    localStorage.setItem("sp_settings", JSON.stringify(settings));
+  }
+
+  el.resultCountInput.value = settings.resultCount;
+  el.volumeSlider.value = settings.volume;
+
+  // ============================================================
+  // PKCE Hilfsfunktionen
+  // ============================================================
+  function randomString(len){
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let out = "";
+    const arr = new Uint8Array(len);
+    crypto.getRandomValues(arr);
+    for (let i = 0; i < len; i++) out += chars[arr[i] % chars.length];
+    return out;
+  }
+
+  function base64url(buffer){
+    return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  async function sha256(str){
+    const data = new TextEncoder().encode(str);
+    return await crypto.subtle.digest("SHA-256", data);
+  }
+
+  async function startLogin(){
+    const verifier = randomString(64);
+    const challenge = base64url(await sha256(verifier));
+    const state = randomString(16);
+    sessionStorage.setItem("sp_verifier", verifier);
+    sessionStorage.setItem("sp_state", state);
+
+    const params = new URLSearchParams({
+      client_id: CLIENT_ID,
+      response_type: "code",
+      redirect_uri: REDIRECT_URI,
+      code_challenge_method: "S256",
+      code_challenge: challenge,
+      scope: SCOPES,
+      state: state
+    });
+    window.location.href = "https://accounts.spotify.com/authorize?" + params.toString();
+  }
+
+  async function exchangeCodeForToken(code){
+    const verifier = sessionStorage.getItem("sp_verifier");
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code: code,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
+      code_verifier: verifier
+    });
+    const res = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body
+    });
+    if (!res.ok) throw new Error("Token-Austausch fehlgeschlagen");
+    return res.json();
+  }
+
+  async function refreshAccessToken(){
+    const refreshToken = localStorage.getItem("sp_refresh_token");
+    if (!refreshToken) return null;
+    const body = new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: CLIENT_ID
+    });
+    const res = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    storeTokens(data);
+    return data.access_token;
+  }
+
+  function storeTokens(data){
+    if (data.access_token){
+      localStorage.setItem("sp_access_token", data.access_token);
+      localStorage.setItem("sp_expires_at", String(Date.now() + (data.expires_in * 1000) - 5000));
+    }
+    if (data.refresh_token){
+      localStorage.setItem("sp_refresh_token", data.refresh_token);
+    }
+  }
+
+  async function getValidAccessToken(){
+    const expiresAt = Number(localStorage.getItem("sp_expires_at") || 0);
+    const token = localStorage.getItem("sp_access_token");
+    if (token && Date.now() < expiresAt) return token;
+    return await refreshAccessToken();
+  }
+
+  function logout(){
+    localStorage.removeItem("sp_access_token");
+    localStorage.removeItem("sp_refresh_token");
+    localStorage.removeItem("sp_expires_at");
+    window.location.href = REDIRECT_URI;
+  }
+
+  // ============================================================
+  // API Wrapper (mit Auto-Refresh bei 401)
+  // ============================================================
+  async function spotifyFetch(url, options = {}){
+    let token = await getValidAccessToken();
+    if (!token) { showLogin(); throw new Error("Nicht angemeldet"); }
+    options.headers = Object.assign({}, options.headers, { Authorization: "Bearer " + token });
+    let res = await fetch(url, options);
+    if (res.status === 401){
+      token = await refreshAccessToken();
+      if (!token) { showLogin(); throw new Error("Nicht angemeldet"); }
+      options.headers.Authorization = "Bearer " + token;
+      res = await fetch(url, options);
+    }
+    return res;
+  }
+
+  function showLogin(){
+    el.loginOverlay.classList.remove("hidden");
+    el.app.classList.remove("ready");
+  }
+
+  // ============================================================
+  // Suche & Tastatur-Navigation
+  // ============================================================
+  let currentResults = [];
+  let selectedIndex = -1;
+  let searchDebounce = null;
+
+  el.input.addEventListener("input", () => {
+    clearTimeout(searchDebounce);
+    const q = el.input.value.trim();
+    if (!q){ renderResults([]); return; }
+    searchDebounce = setTimeout(() => runSearch(q), 300);
+  });
+
+  async function runSearch(q){
+    const limit = Math.min(10, Math.max(5, Number(settings.resultCount) || 7));
+    const res = await spotifyFetch(
+      "https://api.spotify.com/v1/search?" + new URLSearchParams({ q, type: "track", limit })
+    );
+    if (!res.ok) return;
+    const data = await res.json();
+    renderResults((data.tracks && data.tracks.items) || []);
+  }
+
+  function renderResults(items){
+    currentResults = items;
+    selectedIndex = -1;
+    el.results.innerHTML = "";
+    items.forEach((track, i) => {
+      const li = document.createElement("li");
+      li.className = "result-item";
+      li.dataset.index = i;
+      const cover = (track.album && track.album.images && track.album.images[track.album.images.length - 1]) || {};
+      li.innerHTML =
+        '<img src="' + (cover.url || "") + '" alt="" />' +
+        '<div class="result-text">' +
+          '<div class="result-title"></div>' +
+          '<div class="result-artist"></div>' +
+        '</div>';
+      li.querySelector(".result-title").textContent = track.name;
+      li.querySelector(".result-artist").textContent = (track.artists || []).map(a => a.name).join(", ");
+      li.addEventListener("click", () => playTrack(track));
+      li.addEventListener("mouseenter", () => setSelected(i));
+      el.results.appendChild(li);
+    });
+  }
+
+  function setSelected(i){
+    selectedIndex = i;
+    [...el.results.children].forEach((li, idx) => {
+      li.classList.toggle("active", idx === i);
+    });
+  }
+
+  // ============================================================
+  // Enter-Geste: kurz drücken = sofort abspielen,
+  // 3 Sekunden halten = in die Warteschlange legen
+  // ============================================================
+  const HOLD_PLAY_THRESHOLD = 250;   // ms – kürzer beim Loslassen: sofort abspielen
+  const HOLD_QUEUE_THRESHOLD = 1000; // ms – so lange halten: in die Warteschlange
+  let holdState = null;
+
+  function startHoldRing(targetIndex){
+    const li = el.results.children[targetIndex];
+    if (!li) return null;
+    const box = li.getBoundingClientRect();
+    const pad = 2;
+    const w = box.width + pad * 2 - 2;
+    const h = box.height + pad * 2 - 2;
+    const svg = document.getElementById("hold-ring");
+    const rect = document.getElementById("hold-ring-rect");
+    svg.style.left = (box.left - pad) + "px";
+    svg.style.top = (box.top - pad) + "px";
+    svg.setAttribute("width", w + 2);
+    svg.setAttribute("height", h + 2);
+    rect.setAttribute("x", 1);
+    rect.setAttribute("y", 1);
+    rect.setAttribute("width", w);
+    rect.setAttribute("height", h);
+    rect.setAttribute("rx", 20);
+    rect.setAttribute("ry", 20);
+    const perimeter = 2 * (w + h);
+    rect.setAttribute("stroke-dasharray", perimeter);
+    rect.style.strokeDashoffset = perimeter;
+    svg.style.display = "block";
+    return perimeter;
+  }
+
+  function updateHoldRing(perimeter, fraction){
+    document.getElementById("hold-ring-rect").style.strokeDashoffset =
+      perimeter * (1 - Math.max(0, Math.min(1, fraction)));
+  }
+
+  function hideHoldRing(){
+    document.getElementById("hold-ring").style.display = "none";
+  }
+
+  function tickHold(){
+    if (!holdState) return;
+    const elapsed = performance.now() - holdState.startTime;
+
+    if (elapsed >= HOLD_PLAY_THRESHOLD && holdState.perimeter === null){
+      holdState.perimeter = startHoldRing(holdState.targetIndex);
+    }
+    if (holdState.perimeter){
+      const fraction = (elapsed - HOLD_PLAY_THRESHOLD) / (HOLD_QUEUE_THRESHOLD - HOLD_PLAY_THRESHOLD);
+      updateHoldRing(holdState.perimeter, fraction);
+    }
+
+    if (elapsed >= HOLD_QUEUE_THRESHOLD && !holdState.queued){
+      holdState.queued = true;
+      queueTrack(currentResults[holdState.targetIndex]);
+      hideHoldRing();
+      return;
+    }
+
+    holdState.raf = requestAnimationFrame(tickHold);
+  }
+
+  el.input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown"){
+      e.preventDefault();
+      if (currentResults.length === 0) return;
+      setSelected(Math.min(selectedIndex + 1, currentResults.length - 1));
+    } else if (e.key === "ArrowUp"){
+      e.preventDefault();
+      if (currentResults.length === 0) return;
+      setSelected(Math.max(selectedIndex - 1, 0));
+    } else if (e.key === "Enter"){
+      e.preventDefault();
+      if (e.repeat || holdState) return; // Tastatur-Wiederholung / bereits am Halten ignorieren
+      if (currentResults.length === 0) return;
+      const idx = selectedIndex >= 0 ? selectedIndex : 0; // ohne Auswahl: relevantestes Ergebnis
+      holdState = { targetIndex: idx, startTime: performance.now(), perimeter: null, queued: false, raf: null };
+      holdState.raf = requestAnimationFrame(tickHold);
+    } else if (e.key === "Escape"){
+      el.input.value = "";
+      renderResults([]);
+    }
+  });
+
+  el.input.addEventListener("keyup", (e) => {
+    if (e.key !== "Enter" || !holdState) return;
+    const elapsed = performance.now() - holdState.startTime;
+    cancelAnimationFrame(holdState.raf);
+    const target = currentResults[holdState.targetIndex];
+    const wasQueued = holdState.queued;
+    hideHoldRing();
+    holdState = null;
+    if (wasQueued) return; // während des Haltens schon in die Warteschlange gelegt
+    if (elapsed < HOLD_PLAY_THRESHOLD){
+      playTrack(target);
+    }
+    // dazwischen losgelassen (Ring unvollständig) -> abgebrochen, nichts passiert
+  });
+
+  // ============================================================
+  // Wiedergabe
+  // ============================================================
+  async function playTrack(track){
+    // Wichtig: Wird nur "uris": [track] ohne Album-Kontext übergeben, legt
+    // Spotify eine Warteschlange mit genau einem Song an - danach ist
+    // Schluss, egal ob Autoplay in der Spotify-App an ist. Mit
+    // context_uri (Album) + offset spielt Spotify normal weiter (Rest des
+    // Albums, danach greift ggf. Spotifys eigenes Autoplay).
+    const deviceId = settings.pinnedDevice || null;
+    const url = "https://api.spotify.com/v1/me/player/play" + (deviceId ? "?device_id=" + deviceId : "");
+    const res = await spotifyFetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context_uri: track.album.uri, offset: { uri: track.uri } })
+    });
+
+    if (res.status === 404 || res.status === 403){
+      // Kein aktives Gerät -> minimale Geräteauswahl anzeigen
+      await showDevicePicker(track);
+      return;
+    }
+
+    resetSearch();
+    pollNowPlaying(true);
+  }
+
+  async function queueTrack(track){
+    const deviceId = settings.pinnedDevice || null;
+    const url = "https://api.spotify.com/v1/me/player/queue?" +
+      new URLSearchParams(Object.assign({ uri: track.uri }, deviceId ? { device_id: deviceId } : {}));
+    const res = await spotifyFetch(url, { method: "POST" });
+
+    if (res.status === 404 || res.status === 403){
+      await showDevicePicker(track, "queue");
+      return;
+    }
+
+    resetSearch();
+  }
+
+  function resetSearch(){
+    el.input.value = "";
+    renderResults([]);
+    el.input.focus();
+  }
+
+  async function showDevicePicker(track, mode = "play"){
+    const res = await spotifyFetch("https://api.spotify.com/v1/me/player/devices");
+    if (!res.ok) return;
+    const data = await res.json();
+    el.devicePickerList.innerHTML = "";
+    (data.devices || []).forEach(dev => {
+      const row = document.createElement("div");
+      row.className = "device-option";
+      row.textContent = dev.name;
+      row.addEventListener("click", async () => {
+        if (mode === "queue"){
+          await spotifyFetch("https://api.spotify.com/v1/me/player/queue?" +
+            new URLSearchParams({ uri: track.uri, device_id: dev.id }), { method: "POST" });
+        } else {
+          await spotifyFetch("https://api.spotify.com/v1/me/player/play?device_id=" + dev.id, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ context_uri: track.album.uri, offset: { uri: track.uri } })
+          });
+        }
+        resetSearch();
+        fadeOutDevicePicker();
+        if (mode !== "queue") pollNowPlaying(true);
+      });
+      el.devicePickerList.appendChild(row);
+    });
+    el.devicePicker.classList.remove("hidden", "fading");
+  }
+
+  function fadeOutDevicePicker(){
+    el.devicePicker.classList.add("fading");
+    setTimeout(() => el.devicePicker.classList.add("hidden"), 1000);
+  }
+
+  // ============================================================
+  // Now Playing
+  // ============================================================
+  let pollTimer = null;
+  let tickTimer = null;
+  let localProgressMs = 0;
+  let localDurationMs = 0;
+  let localTicking = false;
+
+  function formatTime(ms){
+    if (ms < 0) ms = 0;
+    const totalSec = Math.floor(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return m + ":" + String(s).padStart(2, "0");
+  }
+
+  async function fetchPlaybackState(){
+    const res = await spotifyFetch("https://api.spotify.com/v1/me/player");
+    if (res.status === 204) return null;
+    if (!res.ok) return null;
+    return res.json();
+  }
+
+function updateNowPlayingUI(state){
+  if (!state || !state.item){
+    document.title = "Suche";
+    el.nowPlaying.classList.add("hidden");
+    localTicking = false;
+    return;
+  }
+  if (el.devicePicker && !el.devicePicker.classList.contains("hidden") && state.is_playing){
+    fadeOutDevicePicker();
+  }
+  const track = state.item;
+  const cover = (track.album && track.album.images && track.album.images[track.album.images.length - 1]) || {};
+  el.npCover.src = cover.url || "";
+  el.npTitle.textContent = track.name;
+  el.npArtist.textContent = (track.artists || []).map(a => a.name).join(", ");
+  document.title = track.name + " – " + (track.artists || []).map(a => a.name).join(", ");
+  localProgressMs = state.progress_ms || 0;
+  localDurationMs = track.duration_ms || 0;
+  localTicking = !!state.is_playing;
+  renderTime();
+  el.nowPlaying.classList.remove("hidden");
+}
+
+  function renderTime(){
+    el.npCurrent.textContent = formatTime(localProgressMs);
+    el.npRemaining.textContent = "-" + formatTime(localDurationMs - localProgressMs);
+  }
+
+  function pollNowPlaying(immediate){
+    clearInterval(pollTimer);
+    clearInterval(tickTimer);
+    const tick = async () => {
+      const state = await fetchPlaybackState();
+      updateNowPlayingUI(state);
+    };
+    if (immediate) tick();
+    pollTimer = setInterval(tick, 4000);
+    tickTimer = setInterval(() => {
+      if (!localTicking) return;
+      localProgressMs = Math.min(localProgressMs + 1000, localDurationMs);
+      renderTime();
+    }, 1000);
+  }
+
+  // ============================================================
+  // Einstellungen UI
+  // ============================================================
+  el.settingsBtn.addEventListener("click", () => {
+    el.settingsPanel.classList.toggle("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    if (!el.settingsPanel.contains(e.target) && e.target !== el.settingsBtn && !el.settingsPanel.classList.contains("hidden")){
+      if (!el.settingsBtn.contains(e.target)) el.settingsPanel.classList.add("hidden");
+    }
+  });
+
+  el.logoutBtn.addEventListener("click", logout);
+
+  el.deviceSelect.addEventListener("change", () => {
+    settings.pinnedDevice = el.deviceSelect.value;
+    saveSettings();
+  });
+
+  el.volumeSlider.addEventListener("change", async () => {
+    settings.volume = Number(el.volumeSlider.value);
+    saveSettings();
+    const deviceId = settings.pinnedDevice || null;
+    const url = "https://api.spotify.com/v1/me/player/volume?" +
+      new URLSearchParams(Object.assign({ volume_percent: settings.volume }, deviceId ? { device_id: deviceId } : {}));
+    await spotifyFetch(url, { method: "PUT" });
+  });
+
+  el.resultCountInput.addEventListener("change", () => {
+    settings.resultCount = Math.min(10, Math.max(5, Number(el.resultCountInput.value) || 7));
+    el.resultCountInput.value = settings.resultCount;
+    saveSettings();
+  });
+
+  async function populateDeviceSelect(){
+    const res = await spotifyFetch("https://api.spotify.com/v1/me/player/devices");
+    if (!res.ok) return;
+    const data = await res.json();
+    el.deviceSelect.innerHTML = '<option value="">Automatisch (aktuelles Gerät)</option>';
+    (data.devices || []).forEach(dev => {
+      const opt = document.createElement("option");
+      opt.value = dev.id;
+      opt.textContent = dev.name;
+      if (dev.id === settings.pinnedDevice) opt.selected = true;
+      el.deviceSelect.appendChild(opt);
+    });
+  }
+
+  async function loadAccountName(){
+    const res = await spotifyFetch("https://api.spotify.com/v1/me");
+    if (!res.ok) return;
+    const data = await res.json();
+    el.accountName.textContent = "Angemeldet als " + (data.display_name || data.id);
+  }
+
+  // ============================================================
+  // Start
+  // ============================================================
+  el.loginBtn.addEventListener("click", startLogin);
+
+  async function init(){
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+
+    if (code){
+      const savedState = sessionStorage.getItem("sp_state");
+      window.history.replaceState({}, document.title, REDIRECT_URI);
+      if (state !== savedState){
+        showLogin();
+        return;
+      }
+      try {
+        const data = await exchangeCodeForToken(code);
+        storeTokens(data);
+      } catch (e){
+        showLogin();
+        return;
+      }
+    }
+
+    const token = await getValidAccessToken();
+    if (!token){
+      showLogin();
+      return;
+    }
+
+    el.loginOverlay.classList.add("hidden");
+
+    // Ausgangszustand ermitteln -> passenden Satz wählen
+    const state0 = await fetchPlaybackState();
+    const phrases = (state0 && state0.is_playing) ? PHRASES_ALREADY_PLAYING : PHRASES_NOTHING_PLAYING;
+    el.phrase.textContent = phrases[Math.floor(Math.random() * phrases.length)];
+    updateNowPlayingUI(state0);
+    if (state0 && state0.is_playing) pollNowPlaying(false);
+
+    el.app.classList.add("ready");
+    el.input.focus();
+
+    loadAccountName();
+    populateDeviceSelect();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
